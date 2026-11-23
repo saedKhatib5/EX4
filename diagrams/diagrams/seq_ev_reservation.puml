@@ -1,0 +1,63 @@
+@startuml
+
+actor "Student / Faculty" as UserActor
+boundary ":StudentDashboardUI" as UI
+control ":ReservationControl" as ResCtrl
+control ":EvBillingControl" as EvCtrl
+boundary ":PaymentGatewayBoundary" as PayGate
+entity ":ParkingSpot" as Spot
+entity ":Reservation" as Res
+entity ":PaymentAuthorization" as PayAuth
+
+UserActor -> UI : onReserveSpotClicked(spotId, licensePlate)
+activate UI
+
+UI -> ResCtrl : reserveSpot(userId, spotId, licensePlate)
+activate ResCtrl
+
+ResCtrl -> Spot : isAvailable()
+activate Spot
+Spot --> ResCtrl : true (version = 1)
+deactivate Spot
+
+ResCtrl -> EvCtrl : authorizeEvPayment(userId, amount)
+activate EvCtrl
+
+EvCtrl -> PayGate : authorizeCreditCard(userId, amount)
+activate PayGate
+PayGate --> EvCtrl : gatewayToken
+deactivate PayGate
+
+create PayAuth
+EvCtrl -> PayAuth : <<create>> PaymentAuthorization(authId, gatewayToken, amount)
+EvCtrl --> ResCtrl : paymentAuth
+deactivate EvCtrl
+
+ResCtrl -> Spot : tryReserve(expectedVersion = 1)
+activate Spot
+
+alt Optimistic Lock Succeeded (Spot Still Available)
+    Spot --> ResCtrl : true
+    deactivate Spot
+
+    create Res
+    ResCtrl -> Res : <<create>> Reservation(reservationId, createdAt, expiresAt, ACTIVE)
+    ResCtrl --> UI : reservation
+    UI -> UI : displayCountdown(15)
+    UI --> UserActor : Show Reservation & 15-Min Countdown
+
+else Concurrent Reservation Conflict (Version Mismatch)
+    ResCtrl -> Spot : tryReserve(expectedVersion = 1)
+    activate Spot
+    Spot --> ResCtrl : false
+    deactivate Spot
+
+    ResCtrl --> UI : throw ConcurrentReservationException
+    deactivate ResCtrl
+
+    UI -> UI : showErrorAlert("Spot already taken")
+    UI --> UserActor : Display Error Alert
+    deactivate UI
+end
+
+@enduml

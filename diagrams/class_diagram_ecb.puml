@@ -1,0 +1,189 @@
+@startuml
+
+' ===== Enumerations =====
+enum UserRole {
+  STUDENT
+  FACULTY
+  SECURITY_GUARD
+  TRAFFIC_ADMIN
+}
+
+enum SpotStatus {
+  AVAILABLE
+  RESERVED
+  OCCUPIED
+}
+
+enum ReservationStatus {
+  ACTIVE
+  FULFILLED
+  NO_SHOW_REVOKED
+}
+
+enum AppealDecision {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+' ===== Boundary classes =====
+class StudentDashboardUI <<boundary>> {
+- String selectedZone
+  + void displayAvailableSpots(List<String> spotIds)
+  + void onReserveSpotClicked(String spotId)
+  + void onSubmitAppealClicked(String violationId, String reasonText)
+  + void displayCountdown(int secondsRemaining)
+  + void showErrorAlert(String message)
+}
+
+class GuardTerminalUI <<boundary>> {
+  + void onLogViolationClicked(String licensePlate, String reason, double fineAmount)
+  + void onIssueGuestQrClicked(String guestPlate)
+}
+
+class AdminAppealUI <<boundary>> {
+  + void onReviewAppealClicked(String appealId, boolean approved)
+}
+
+class LprGateBoundary <<boundary>> {
+  + void onPlateScanned(String licensePlate)
+  + void onGuestQrScanned(String qrToken)
+  + void openBarrierGate()
+  + void denyEntry(String reason)
+}
+
+class PaymentGatewayBoundary <<boundary>> {
+  + String authorizeCreditCard(String cardToken, double amount)
+}
+
+class SmsGatewayBoundary <<boundary>> {
+  + void sendSmsAlert(String phoneNumber, String message)
+}
+
+' ===== Control classes =====
+class ReservationControl <<control>> {
+- int reservationWindowMin = 15
+  + List<ParkingSpot> findAvailableSpots(String userId, boolean isEvCharger)
+  + Reservation reserveSpot(String userId, String licensePlate, String spotId)
+  + void processLprGateEntry(String licensePlate)
+  + void validateGuestQrEntry(String qrToken, String licensePlate)
+  + void revokeExpiredReservations()
+}
+
+class EvBillingControl <<control>> {
+- int idleGraceMin = 30
+- double idleRateNisPerHour = 5.0
+  + PaymentAuthorization authorizeEvPayment(String reservationId, String cardToken, double amount)
+  + void notifyChargeComplete(String sessionId)
+  + void applyIdlePenalties()
+}
+
+class EnforcementControl <<control>> {
+  + GuestPass issueGuestPass(String guardId, String guestPlate)
+  + Violation logSevereViolation(String guardId, String licensePlate, String reason, double fineAmount)
+  + Appeal submitDigitalAppeal(String violationId, String reasonText)
+  + void reviewDigitalAppeal(String appealId, String adminId, AppealDecision decision)
+}
+
+' ===== Entity classes =====
+abstract class User <<entity>> {
+- String userId
+- String fullName
+- String email
+- String phoneNumber
+- UserRole role
+- int noShowWarnings
+  + void incrementNoShowWarnings()
+}
+
+class Student <<entity>> {
+- String studentId
+- boolean activePermit
+  + boolean hasActivePermit()
+}
+
+class Faculty <<entity>> {
+- String facultyId
+- String department
+- boolean activePermit
+  + boolean hasActivePermit()
+}
+
+class SecurityGuard <<entity>> {
+- String badgeNumber
+}
+
+class TrafficAdministrator <<entity>> {
+- String adminOfficeId
+}
+
+class GuestPass <<entity>> {
+- String qrToken
+- String guestPlate
+- LocalDateTime expiresAt
+- boolean isUsed
+  + boolean isValid()
+  + void markUsed()
+}
+
+class Vehicle <<entity>> {
+- String licensePlate
+}
+
+class ParkingZone <<entity>> {
+- String zoneId
+- String zoneName
+- int totalCapacity
+}
+
+class ParkingSpot <<entity>> {
+- String spotId
+- boolean isEvCharger
+- SpotStatus status
+- int version
+  + boolean isAvailable()
+  + boolean tryReserve(int expectedVersion)
+  + void setStatus(SpotStatus status)
+}
+
+class Reservation <<entity>> {
+- String reservationId
+- LocalDateTime createdAt
+- LocalDateTime expiresAt
+- ReservationStatus status
+  + boolean isWithin15MinWindow()
+  + void setStatus(ReservationStatus status)
+}
+
+class PaymentAuthorization <<entity>> {
+- String authId
+- String gatewayToken
+- double authorizedAmount
+- LocalDateTime authorizedAt
+}
+
+class ChargingSession <<entity>> {
+- String sessionId
+- LocalDateTime completedAt
+- boolean isPluggedIn
+- boolean isPhysicallyOccupied
+- double idlePenaltyNis
+  + boolean isIdleOver30Minutes()
+}
+
+class Violation <<entity>> {
+- String violationId
+- String reason
+- double fineAmount
+- boolean isPaid
+  + void cancelFine()
+}
+
+class Appeal <<entity>> {
+- String appealId
+- String reasonText
+- AppealDecision decision
+  + void setDecision(AppealDecision decision)
+}
+
+@enduml

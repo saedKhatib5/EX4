@@ -1,0 +1,64 @@
+@startuml
+
+actor "LPR Camera / Timer" as SystemTrigger
+boundary ":LprGateBoundary" as Gate
+control ":ReservationControl" as ResCtrl
+entity ":Vehicle" as Vehicle
+entity ":Reservation" as Res
+entity ":ParkingSpot" as Spot
+control ":EvBillingControl" as EvCtrl
+entity ":ChargingSession" as Session
+entity ":Violation" as Violation
+boundary ":SmsGatewayBoundary" as SmsGate
+
+== Part A: LPR Automated Gate Entry ==
+SystemTrigger -> Gate : onPlateScanned(licensePlate, zoneName)
+activate Gate
+
+Gate -> ResCtrl : processLprGateEntry(licensePlate, zoneName)
+activate ResCtrl
+
+ResCtrl -> Vehicle : getVehicleByPlate(licensePlate)
+activate Vehicle
+Vehicle --> ResCtrl : vehicle
+deactivate Vehicle
+
+ResCtrl -> Res : isWithin15MinWindow()
+activate Res
+Res --> ResCtrl : true
+deactivate Res
+
+ResCtrl -> Res : setStatus(FULFILLED)
+activate Res
+deactivate Res
+
+ResCtrl -> Spot : setStatus(OCCUPIED)
+activate Spot
+deactivate Spot
+
+ResCtrl --> Gate : true
+deactivate ResCtrl
+
+Gate -> Gate : openBarrierGate()
+deactivate Gate
+
+== Part B: EV Idle Penalty Enforcement (> 30 Min) ==
+SystemTrigger -> EvCtrl : applyIdlePenalties()
+activate EvCtrl
+
+EvCtrl -> Session : isIdleOver30Minutes()
+activate Session
+Session --> EvCtrl : true
+deactivate Session
+
+create Violation
+EvCtrl -> Violation : <<create>> Violation(violationId, "EV Idle Over 30 Min", idlePenaltyNis)
+
+EvCtrl -> SmsGate : sendSmsAlert(phoneNumber, "Idle penalty applied")
+activate SmsGate
+SmsGate --> EvCtrl : sent
+deactivate SmsGate
+
+deactivate EvCtrl
+
+@enduml
